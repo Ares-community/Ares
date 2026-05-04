@@ -9,6 +9,11 @@
  * a continuous companion — present on the hero, drifting through the
  * projects, and resting in the footer. Inspired by igloo.inc.
  *
+ * When scroll reaches the end, the rig detonates: every face of the inner
+ * icosahedron becomes an independent shard flying outward with random
+ * spin, a bright burst expands at the core, the screen flashes white,
+ * then the page navigates to `redirectUrl`.
+ *
  * Design rules:
  *   • No blinks, no on/off pulsing — only continuous easing.
  *   • All motion is scroll-driven plus a gentle baseline drift.
@@ -16,19 +21,26 @@
  *   • Sits behind content (z-index handled by the parent wrapper).
  */
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import * as THREE from "three"
 
 interface ScrollMonolithProps {
   className?: string
+  redirectUrl?: string
 }
 
-export function ScrollMonolith({ className = "" }: ScrollMonolithProps) {
+type ExplosionPhase = "idle" | "boom" | "flash" | "done"
+
+export function ScrollMonolith({
+  className = "",
+  redirectUrl = "https://ayaan-agrawal.netlify.app/",
+}: ScrollMonolithProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef<{ raf: number | null; cleanup: (() => void) | null }>({
     raf: null,
     cleanup: null,
   })
+  const [phase, setPhase] = useState<ExplosionPhase>("idle")
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -168,6 +180,7 @@ export function ScrollMonolith({ className = "" }: ScrollMonolithProps) {
       scrollTarget = window.scrollY / max
     }
     window.addEventListener("scroll", onScroll, { passive: true })
+    onScroll()
 
     // ── mouse parallax (very subtle)
     let mouseX = 0,
@@ -180,40 +193,213 @@ export function ScrollMonolith({ className = "" }: ScrollMonolithProps) {
     }
     window.addEventListener("mousemove", onMouse)
 
+    // ── explosion state
+    let exploding = false
+    let explodeStart = 0
+    let redirected = false
+    type Shard = {
+      mesh: THREE.Mesh
+      mat: THREE.MeshStandardMaterial
+      vel: THREE.Vector3
+      spin: THREE.Vector3
+    }
+    const shards: Shard[] = []
+    let burst: THREE.Mesh | null = null
+    let burstMat: THREE.MeshBasicMaterial | null = null
+    let shockwave: THREE.Mesh | null = null
+    let shockwaveMat: THREE.MeshBasicMaterial | null = null
+    const frozenPos = new THREE.Vector3()
+    const frozenRot = new THREE.Euler()
+
+    const detonate = () => {
+      if (exploding) return
+      exploding = true
+      explodeStart = performance.now()
+
+      frozenPos.copy(rig.position)
+      frozenRot.copy(rig.rotation)
+
+      // Hide originals — shards take their place
+      inner.visible = false
+      wire.visible = false
+      halo.visible = false
+      ring.visible = false
+
+      // Build shards from inner icosahedron faces
+      const posAttr = innerGeo.attributes.position as THREE.BufferAttribute
+      const indexAttr = innerGeo.index
+      const triCount = indexAttr ? indexAttr.count / 3 : posAttr.count / 3
+      const innerScale = 1.25 // matches the geometry radius / inner mesh
+
+      for (let i = 0; i < triCount; i++) {
+        const ia = indexAttr ? indexAttr.getX(i * 3 + 0) : i * 3 + 0
+        const ib = indexAttr ? indexAttr.getX(i * 3 + 1) : i * 3 + 1
+        const ic = indexAttr ? indexAttr.getX(i * 3 + 2) : i * 3 + 2
+
+        const pa = new THREE.Vector3().fromBufferAttribute(posAttr, ia)
+        const pb = new THREE.Vector3().fromBufferAttribute(posAttr, ib)
+        const pc = new THREE.Vector3().fromBufferAttribute(posAttr, ic)
+        const center = pa.clone().add(pb).add(pc).divideScalar(3)
+
+        const triGeo = new THREE.BufferGeometry()
+        triGeo.setAttribute(
+          "position",
+          new THREE.BufferAttribute(
+            new Float32Array([
+              pa.x - center.x, pa.y - center.y, pa.z - center.z,
+              pb.x - center.x, pb.y - center.y, pb.z - center.z,
+              pc.x - center.x, pc.y - center.y, pc.z - center.z,
+            ]),
+            3,
+          ),
+        )
+        triGeo.computeVertexNormals()
+
+        const triMat = new THREE.MeshStandardMaterial({
+          color: 0xc0cfff,
+          emissive: 0x4a6ad4,
+          emissiveIntensity: 1.6,
+          metalness: 0.55,
+          roughness: 0.4,
+          transparent: true,
+          opacity: 1,
+          side: THREE.DoubleSide,
+          flatShading: true,
+        })
+
+        const triMesh = new THREE.Mesh(triGeo, triMat)
+        triMesh.position.copy(center)
+        rig.add(triMesh)
+
+        const dir = center.clone().normalize().add(
+          new THREE.Vector3(
+            (Math.random() - 0.5) * 0.5,
+            (Math.random() - 0.5) * 0.5,
+            (Math.random() - 0.5) * 0.5,
+          ),
+        ).normalize()
+
+        const speed = 3.2 + Math.random() * 4.2
+        shards.push({
+          mesh: triMesh,
+          mat: triMat,
+          vel: dir.multiplyScalar(speed),
+          spin: new THREE.Vector3(
+            (Math.random() - 0.5) * 14,
+            (Math.random() - 0.5) * 14,
+            (Math.random() - 0.5) * 14,
+          ),
+        })
+      }
+      void innerScale
+
+      // Central blinding burst
+      const burstGeo = new THREE.SphereGeometry(0.35, 32, 32)
+      burstMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 1,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
+      burst = new THREE.Mesh(burstGeo, burstMat)
+      rig.add(burst)
+
+      // Expanding shockwave ring
+      const shockGeo = new THREE.RingGeometry(0.3, 0.42, 64)
+      shockwaveMat = new THREE.MeshBasicMaterial({
+        color: 0xb0c8ff,
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      })
+      shockwave = new THREE.Mesh(shockGeo, shockwaveMat)
+      // Face the camera
+      shockwave.lookAt(camera.position.clone().sub(rig.position))
+      rig.add(shockwave)
+
+      // Drive the DOM overlay phases
+      setPhase("boom")
+      window.setTimeout(() => setPhase("flash"), 550)
+      window.setTimeout(() => {
+        if (redirected) return
+        redirected = true
+        setPhase("done")
+        window.location.href = redirectUrl
+      }, 1700)
+    }
+
     const t0 = performance.now()
+    let prev = t0
     const tick = () => {
-      const t = (performance.now() - t0) / 1000
+      const now = performance.now()
+      const dt = Math.min(0.05, (now - prev) / 1000)
+      prev = now
+      const t = (now - t0) / 1000
 
-      // ease scroll & mouse
-      scrollEased += (scrollTarget - scrollEased) * 0.05
-      mouseX += (mxT - mouseX) * 0.04
-      mouseY += (myT - mouseY) * 0.04
+      if (!exploding) {
+        // ease scroll & mouse
+        scrollEased += (scrollTarget - scrollEased) * 0.05
+        mouseX += (mxT - mouseX) * 0.04
+        mouseY += (myT - mouseY) * 0.04
 
-      // The rig "follows" scroll — translates upward and pushes deeper
-      // as the user descends, then settles in the lower-right of view.
-      // We blend three position keyframes via the eased scroll value.
-      const s = scrollEased
-      const px = -1.4 + s * 3.6 + mouseX * 0.25
-      const py = 1.2 - s * 3.0 - mouseY * 0.18
-      const pz = 0 - s * 2.5
-      rig.position.set(px, py, pz)
+        const s = scrollEased
+        const px = -1.4 + s * 3.6 + mouseX * 0.25
+        const py = 1.2 - s * 3.0 - mouseY * 0.18
+        const pz = 0 - s * 2.5
+        rig.position.set(px, py, pz)
 
-      // continuous rotation, accelerated slightly by scroll
-      const rotSpeed = 0.18 + s * 0.4
-      rig.rotation.y = t * 0.12 * rotSpeed + mouseX * 0.4
-      rig.rotation.x = t * 0.07 * rotSpeed + mouseY * 0.25
-      ring.rotation.z = t * 0.25
+        const rotSpeed = 0.18 + s * 0.4
+        rig.rotation.y = t * 0.12 * rotSpeed + mouseX * 0.4
+        rig.rotation.x = t * 0.07 * rotSpeed + mouseY * 0.25
+        ring.rotation.z = t * 0.25
 
-      // halo counter-rotates for parallax feel
-      halo.rotation.y = -t * 0.05
-      halo.rotation.x = t * 0.04
+        halo.rotation.y = -t * 0.05
+        halo.rotation.x = t * 0.04
 
-      // gentle breathing scale, no on/off blink
-      const breath = 1 + Math.sin(t * 0.5) * 0.012
-      inner.scale.setScalar(breath)
-      wire.scale.setScalar(breath)
+        const breath = 1 + Math.sin(t * 0.5) * 0.012
+        inner.scale.setScalar(breath)
+        wire.scale.setScalar(breath)
 
-      // starfield slowly drifts down
+        // Trigger explosion when the rig has completed its scroll journey
+        if (scrollTarget > 0.985) detonate()
+      } else {
+        // Freeze the rig at its detonation pose so shards fly from the
+        // exact spot the user last saw the shape.
+        rig.position.copy(frozenPos)
+        rig.rotation.copy(frozenRot)
+
+        const elapsed = (now - explodeStart) / 1000
+
+        for (const s of shards) {
+          s.mesh.position.x += s.vel.x * dt
+          s.mesh.position.y += s.vel.y * dt
+          s.mesh.position.z += s.vel.z * dt
+          s.vel.multiplyScalar(0.985)
+          s.mesh.rotation.x += s.spin.x * dt
+          s.mesh.rotation.y += s.spin.y * dt
+          s.mesh.rotation.z += s.spin.z * dt
+          const k = Math.max(0, 1 - elapsed / 1.5)
+          s.mat.opacity = k
+          s.mat.emissiveIntensity = 1.6 * k
+        }
+
+        if (burst && burstMat) {
+          const sc = 1 + elapsed * 22
+          burst.scale.setScalar(sc)
+          burstMat.opacity = Math.max(0, 1 - elapsed / 0.45)
+        }
+
+        if (shockwave && shockwaveMat) {
+          const sc = 1 + elapsed * 14
+          shockwave.scale.setScalar(sc)
+          shockwaveMat.opacity = Math.max(0, 0.9 - elapsed / 0.7)
+        }
+      }
+
+      // starfield slowly drifts down (continues during explosion)
       stars.position.y = -((t * 0.4) % 60) + 30
       stars.rotation.z = t * 0.005
 
@@ -234,17 +420,54 @@ export function ScrollMonolith({ className = "" }: ScrollMonolithProps) {
       ringGeo.dispose(); ringMat.dispose()
       starGeo.dispose(); starMat.dispose()
       sprite.dispose()
+      for (const s of shards) {
+        s.mesh.geometry.dispose()
+        s.mat.dispose()
+      }
+      if (burst) burst.geometry.dispose()
+      burstMat?.dispose()
+      if (shockwave) shockwave.geometry.dispose()
+      shockwaveMat?.dispose()
     }
     return () => {
       stateRef.current.cleanup?.()
     }
-  }, [])
+  }, [redirectUrl])
 
   return (
-    <canvas
-      ref={canvasRef}
-      className={`fixed inset-0 h-full w-full pointer-events-none ${className}`}
-      style={{ display: "block" }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className={`fixed inset-0 h-full w-full pointer-events-none ${className}`}
+        style={{ display: "block" }}
+      />
+
+      {/* Soft radial bloom layer — fades in immediately when the burst lights */}
+      <div
+        aria-hidden
+        className="fixed inset-0 pointer-events-none z-[55]"
+        style={{
+          background:
+            "radial-gradient(circle at 50% 50%, rgba(255,255,255,0.85), rgba(180,200,255,0.45) 30%, rgba(80,110,200,0.15) 55%, transparent 75%)",
+          opacity: phase === "boom" ? 1 : phase === "flash" || phase === "done" ? 0 : 0,
+          transition:
+            phase === "boom"
+              ? "opacity 220ms cubic-bezier(0.2,0.9,0.4,1)"
+              : "opacity 600ms ease-out",
+          mixBlendMode: "screen",
+        }}
+      />
+
+      {/* White-out overlay — drives the page-handoff feel */}
+      <div
+        aria-hidden
+        className="fixed inset-0 pointer-events-none z-[60]"
+        style={{
+          background: "white",
+          opacity: phase === "flash" || phase === "done" ? 1 : 0,
+          transition: "opacity 1000ms cubic-bezier(0.7, 0, 0.84, 0)",
+        }}
+      />
+    </>
   )
 }
