@@ -1,7 +1,7 @@
 "use client"
 
 import { motion, useScroll, useTransform } from "framer-motion"
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import { LiquidButton } from "@/components/ui/liquid-glass-button"
 import { GlassEffect } from "@/components/ui/liquid-glass"
 
@@ -253,6 +253,31 @@ const SERIES: Series[] = [
    VERTICAL SERIES CARD — tall frosted-glass, blackish chip
    ───────────────────────────────────────────────────────── */
 function SeriesCard({ s, i }: { s: Series; i: number }) {
+  const tiltRef = useRef<HTMLDivElement>(null)
+  const [hover, setHover] = useState(false)
+
+  const handleMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = tiltRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    const x = e.clientX - r.left
+    const y = e.clientY - r.top
+    const nx = x / r.width - 0.5 // -0.5 .. 0.5
+    const ny = y / r.height - 0.5
+    el.style.setProperty("--mx", `${x}px`)
+    el.style.setProperty("--my", `${y}px`)
+    el.style.setProperty("--rx", `${(-ny * 9).toFixed(2)}deg`)
+    el.style.setProperty("--ry", `${(nx * 11).toFixed(2)}deg`)
+  }
+
+  const handleLeave = () => {
+    setHover(false)
+    const el = tiltRef.current
+    if (!el) return
+    el.style.setProperty("--rx", "0deg")
+    el.style.setProperty("--ry", "0deg")
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 80 }}
@@ -260,11 +285,47 @@ function SeriesCard({ s, i }: { s: Series; i: number }) {
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.9, delay: i * 0.15, ease: [0.22, 1, 0.36, 1] }}
       className="h-full"
+      style={{ perspective: "1400px" }}
     >
+      <div
+        ref={tiltRef}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={handleLeave}
+        onMouseMove={handleMove}
+        className="h-full will-change-transform"
+        style={{
+          transform:
+            "rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(0)",
+          transformStyle: "preserve-3d",
+          transition: hover
+            ? "transform 80ms linear"
+            : "transform 700ms cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
+      >
       <GlassEffect
         variant="strong"
-        className="group relative h-full min-h-[680px] rounded-3xl flex flex-col p-10 hover:-translate-y-1 hover:border-white/20"
+        className="group relative h-full min-h-[680px] rounded-3xl flex flex-col p-10"
+        style={
+          hover
+            ? {
+                borderColor: "rgba(255,255,255,0.38)",
+                boxShadow:
+                  "inset 0 1px 0 rgba(255,255,255,0.32), inset 0 0 0 1px rgba(255,255,255,0.08), 0 50px 100px -30px rgba(0,0,0,0.7), 0 16px 36px -12px rgba(0,0,0,0.5), 0 0 80px -10px rgba(180,200,255,0.45)",
+              }
+            : undefined
+        }
       >
+        {/* cursor-following spotlight — only while hovered */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300"
+          style={{
+            opacity: hover ? 1 : 0,
+            background:
+              "radial-gradient(circle 320px at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,0.22), rgba(180,200,255,0.08) 40%, transparent 70%)",
+            mixBlendMode: "screen",
+          }}
+        />
         <span className="ares-bracket-tl" />
         <span className="ares-bracket-tr" />
         <span className="ares-bracket-bl" />
@@ -348,6 +409,7 @@ function SeriesCard({ s, i }: { s: Series; i: number }) {
           <span className="group-hover:text-white transition-colors">↗ ENTER</span>
         </div>
       </GlassEffect>
+      </div>
     </motion.div>
   )
 }

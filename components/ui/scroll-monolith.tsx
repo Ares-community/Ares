@@ -21,15 +21,13 @@
  *   • Sits behind content (z-index handled by the parent wrapper).
  */
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
 import * as THREE from "three"
 
 interface ScrollMonolithProps {
   className?: string
   redirectUrl?: string
 }
-
-type ExplosionPhase = "idle" | "boom" | "flash" | "done"
 
 export function ScrollMonolith({
   className = "",
@@ -40,7 +38,6 @@ export function ScrollMonolith({
     raf: null,
     cleanup: null,
   })
-  const [phase, setPhase] = useState<ExplosionPhase>("idle")
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -320,15 +317,12 @@ export function ScrollMonolith({
       shockwave.lookAt(camera.position.clone().sub(rig.position))
       rig.add(shockwave)
 
-      // Drive the DOM overlay phases
-      setPhase("boom")
-      window.setTimeout(() => setPhase("flash"), 550)
-      window.setTimeout(() => {
-        if (redirected) return
+      // Navigate immediately — the in-canvas burst keeps playing during
+      // the browser's natural fetch+parse latency for the destination.
+      if (!redirected) {
         redirected = true
-        setPhase("done")
         window.location.href = redirectUrl
-      }, 1700)
+      }
     }
 
     const t0 = performance.now()
@@ -435,39 +429,10 @@ export function ScrollMonolith({
   }, [redirectUrl])
 
   return (
-    <>
-      <canvas
-        ref={canvasRef}
-        className={`fixed inset-0 h-full w-full pointer-events-none ${className}`}
-        style={{ display: "block" }}
-      />
-
-      {/* Soft radial bloom layer — fades in immediately when the burst lights */}
-      <div
-        aria-hidden
-        className="fixed inset-0 pointer-events-none z-[55]"
-        style={{
-          background:
-            "radial-gradient(circle at 50% 50%, rgba(255,255,255,0.85), rgba(180,200,255,0.45) 30%, rgba(80,110,200,0.15) 55%, transparent 75%)",
-          opacity: phase === "boom" ? 1 : phase === "flash" || phase === "done" ? 0 : 0,
-          transition:
-            phase === "boom"
-              ? "opacity 220ms cubic-bezier(0.2,0.9,0.4,1)"
-              : "opacity 600ms ease-out",
-          mixBlendMode: "screen",
-        }}
-      />
-
-      {/* White-out overlay — drives the page-handoff feel */}
-      <div
-        aria-hidden
-        className="fixed inset-0 pointer-events-none z-[60]"
-        style={{
-          background: "white",
-          opacity: phase === "flash" || phase === "done" ? 1 : 0,
-          transition: "opacity 1000ms cubic-bezier(0.7, 0, 0.84, 0)",
-        }}
-      />
-    </>
+    <canvas
+      ref={canvasRef}
+      className={`fixed inset-0 h-full w-full pointer-events-none ${className}`}
+      style={{ display: "block" }}
+    />
   )
 }
