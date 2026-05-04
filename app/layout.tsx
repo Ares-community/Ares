@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Space_Grotesk, JetBrains_Mono } from "next/font/goog
 import "./globals.css";
 import { SiteNav } from "@/components/site-nav";
 import { SiteBackdrop } from "@/components/site-backdrop";
+import { ScrollProgress } from "@/components/ui/scroll-progress";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,6 +44,7 @@ export default function RootLayout({
     >
       <body className="min-h-screen bg-black text-white antialiased overflow-x-hidden selection:bg-white/15 selection:text-white">
         <SiteBackdrop />
+        <ScrollProgress />
         <SiteNav />
         {children}
       </body>

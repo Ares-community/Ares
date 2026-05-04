@@ -21,13 +21,21 @@
  *   • Sits behind content (z-index handled by the parent wrapper).
  */
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import * as THREE from "three"
 
 interface ScrollMonolithProps {
   className?: string
   redirectUrl?: string
 }
+
+const LETTER_STARTS: { letter: string; sx: number; sy: number; sr: number }[] = [
+  { letter: "A", sx: -1500, sy: -780, sr: -160 },
+  { letter: "R", sx: 1600, sy: -820, sr: 130 },
+  { letter: "E", sx: -1400, sy: 820, sr: 210 },
+  { letter: "S", sx: 1500, sy: 760, sr: -130 },
+]
 
 export function ScrollMonolith({
   className = "",
@@ -38,6 +46,7 @@ export function ScrollMonolith({
     raf: null,
     cleanup: null,
   })
+  const [aresPhase, setAresPhase] = useState(false)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -194,6 +203,7 @@ export function ScrollMonolith({
     let exploding = false
     let explodeStart = 0
     let redirected = false
+    const timeouts: number[] = []
     type Shard = {
       mesh: THREE.Mesh
       mat: THREE.MeshStandardMaterial
@@ -317,12 +327,21 @@ export function ScrollMonolith({
       shockwave.lookAt(camera.position.clone().sub(rig.position))
       rig.add(shockwave)
 
-      // Navigate immediately — the in-canvas burst keeps playing during
-      // the browser's natural fetch+parse latency for the destination.
-      if (!redirected) {
-        redirected = true
-        window.location.href = redirectUrl
-      }
+      // Outro sequence:
+      //   t=0    .. 2.0s  3D shards/burst/shockwave fade
+      //   t=1.6s         ARES letters fly to center, BG dims
+      //   t=2.8s .. 5.8s ARES held on screen for 3s
+      //   t=5.8s         redirect
+      timeouts.push(
+        window.setTimeout(() => setAresPhase(true), 1600),
+      )
+      timeouts.push(
+        window.setTimeout(() => {
+          if (redirected) return
+          redirected = true
+          window.location.href = redirectUrl
+        }, 5800),
+      )
     }
 
     const t0 = performance.now()
@@ -375,21 +394,21 @@ export function ScrollMonolith({
           s.mesh.rotation.x += s.spin.x * dt
           s.mesh.rotation.y += s.spin.y * dt
           s.mesh.rotation.z += s.spin.z * dt
-          const k = Math.max(0, 1 - elapsed / 1.5)
+          const k = Math.max(0, 1 - elapsed / 2.0)
           s.mat.opacity = k
           s.mat.emissiveIntensity = 1.6 * k
         }
 
         if (burst && burstMat) {
-          const sc = 1 + elapsed * 22
+          const sc = 1 + elapsed * 18
           burst.scale.setScalar(sc)
-          burstMat.opacity = Math.max(0, 1 - elapsed / 0.45)
+          burstMat.opacity = Math.max(0, 1 - elapsed / 0.6)
         }
 
         if (shockwave && shockwaveMat) {
-          const sc = 1 + elapsed * 14
+          const sc = 1 + elapsed * 12
           shockwave.scale.setScalar(sc)
-          shockwaveMat.opacity = Math.max(0, 0.9 - elapsed / 0.7)
+          shockwaveMat.opacity = Math.max(0, 0.9 - elapsed / 0.95)
         }
       }
 
@@ -404,6 +423,7 @@ export function ScrollMonolith({
 
     stateRef.current.cleanup = () => {
       if (stateRef.current.raf !== null) cancelAnimationFrame(stateRef.current.raf)
+      timeouts.forEach((id) => window.clearTimeout(id))
       window.removeEventListener("resize", onResize)
       window.removeEventListener("scroll", onScroll)
       window.removeEventListener("mousemove", onMouse)
@@ -429,10 +449,77 @@ export function ScrollMonolith({
   }, [redirectUrl])
 
   return (
-    <canvas
-      ref={canvasRef}
-      className={`fixed inset-0 h-full w-full pointer-events-none ${className}`}
-      style={{ display: "block" }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className={`fixed inset-0 h-full w-full pointer-events-none ${className}`}
+        style={{ display: "block" }}
+      />
+
+      <AnimatePresence>
+        {aresPhase && (
+          <motion.div
+            key="ares-overlay"
+            className="fixed inset-0 z-[80] pointer-events-none"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+          >
+            {/* dim + slight blur veil over everything else */}
+            <motion.div
+              className="absolute inset-0"
+              initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+              animate={{ opacity: 1, backdropFilter: "blur(8px)" }}
+              transition={{ duration: 0.7, ease: "easeOut" }}
+              style={{ background: "rgba(0,0,0,0.78)" }}
+            />
+
+            {/* ARES letters converging to center */}
+            <div className="absolute inset-0 flex items-center justify-center px-4">
+              <div
+                className="flex items-baseline"
+                style={{ gap: "0.04em", filter: "drop-shadow(0 0 80px rgba(180,200,255,0.35))" }}
+              >
+                {LETTER_STARTS.map(({ letter, sx, sy, sr }, idx) => (
+                  <motion.span
+                    key={letter}
+                    initial={{
+                      x: sx,
+                      y: sy,
+                      rotate: sr,
+                      scale: 0.22,
+                      opacity: 0,
+                      filter: "blur(28px)",
+                    }}
+                    animate={{
+                      x: 0,
+                      y: 0,
+                      rotate: 0,
+                      scale: 1,
+                      opacity: 1,
+                      filter: "blur(0px)",
+                    }}
+                    transition={{
+                      delay: idx * 0.13,
+                      duration: 0.85,
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
+                    className="font-display font-bold leading-none tracking-tighter text-white text-[24vw] md:text-[19rem]"
+                    style={{
+                      transformOrigin: "center",
+                      textShadow:
+                        "0 0 60px rgba(180,200,255,0.55), 0 0 18px rgba(255,255,255,0.65)",
+                    }}
+                  >
+                    {letter}
+                  </motion.span>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   )
 }

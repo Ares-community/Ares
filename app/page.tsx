@@ -1,6 +1,13 @@
 "use client"
 
-import { motion, useScroll, useTransform } from "framer-motion"
+import {
+  motion,
+  useScroll,
+  useTransform,
+  useMotionTemplate,
+  useVelocity,
+  useSpring,
+} from "framer-motion"
 import { useRef, useState } from "react"
 import { LiquidButton } from "@/components/ui/liquid-glass-button"
 import { GlassEffect } from "@/components/ui/liquid-glass"
@@ -12,13 +19,24 @@ import { GlassEffect } from "@/components/ui/liquid-glass"
    ───────────────────────────────────────────────────────── */
 function Hero() {
   const ref = useRef<HTMLDivElement>(null)
-  const { scrollYProgress } = useScroll({
+  const { scrollYProgress, scrollY } = useScroll({
     target: ref,
     offset: ["start start", "end start"],
   })
   const titleY = useTransform(scrollYProgress, [0, 1], [0, -120])
   const titleOpacity = useTransform(scrollYProgress, [0, 0.7, 1], [1, 1, 0])
+  const titleScale = useTransform(scrollYProgress, [0, 1], [1, 0.9])
+  const titleBlurPx = useTransform(scrollYProgress, [0, 0.5, 1], [0, 0, 7])
+  const titleFilter = useMotionTemplate`blur(${titleBlurPx}px)`
   const subY = useTransform(scrollYProgress, [0, 1], [0, -60])
+
+  // velocity-driven skew on the title — when the user scrolls hard, the
+  // headline tilts a few degrees, then springs back
+  const rawVel = useVelocity(scrollY)
+  const smoothVel = useSpring(rawVel, { damping: 60, stiffness: 350 })
+  const titleSkew = useTransform(smoothVel, [-3500, 0, 3500], [-3, 0, 3], {
+    clamp: true,
+  })
 
   return (
     <section
@@ -26,8 +44,14 @@ function Hero() {
       className="relative min-h-[100svh] flex flex-col items-center justify-center px-4 pt-32 pb-24"
     >
       <motion.div
-        style={{ y: titleY, opacity: titleOpacity }}
-        className="relative z-10 max-w-5xl mx-auto text-center"
+        style={{
+          y: titleY,
+          opacity: titleOpacity,
+          scale: titleScale,
+          skewY: titleSkew,
+          filter: titleFilter,
+        }}
+        className="relative z-10 max-w-5xl mx-auto text-center will-change-transform"
       >
         <div className="mb-8 flex items-center justify-center gap-3 font-mono text-[10px] tracking-[0.6em] uppercase text-white/40">
           <span className="h-px w-10 bg-white/15" />
@@ -305,27 +329,7 @@ function SeriesCard({ s, i }: { s: Series; i: number }) {
       <GlassEffect
         variant="strong"
         className="group relative h-full min-h-[680px] rounded-3xl flex flex-col p-10"
-        style={
-          hover
-            ? {
-                borderColor: "rgba(255,255,255,0.38)",
-                boxShadow:
-                  "inset 0 1px 0 rgba(255,255,255,0.32), inset 0 0 0 1px rgba(255,255,255,0.08), 0 50px 100px -30px rgba(0,0,0,0.7), 0 16px 36px -12px rgba(0,0,0,0.5), 0 0 80px -10px rgba(180,200,255,0.45)",
-              }
-            : undefined
-        }
       >
-        {/* cursor-following spotlight — only while hovered */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300"
-          style={{
-            opacity: hover ? 1 : 0,
-            background:
-              "radial-gradient(circle 320px at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,0.22), rgba(180,200,255,0.08) 40%, transparent 70%)",
-            mixBlendMode: "screen",
-          }}
-        />
         <span className="ares-bracket-tl" />
         <span className="ares-bracket-tr" />
         <span className="ares-bracket-bl" />
