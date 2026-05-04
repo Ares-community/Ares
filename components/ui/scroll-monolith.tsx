@@ -330,8 +330,8 @@ export function ScrollMonolith({
       // Outro sequence:
       //   t=0    .. 2.0s  3D shards/burst/shockwave fade
       //   t=1.6s         ARES letters fly to center, BG dims
-      //   t=2.8s .. 5.8s ARES held on screen for 3s
-      //   t=5.8s         redirect
+      //   t=1.6s .. 3.1s ARES held on screen for 1.5s
+      //   t=3.1s         redirect
       timeouts.push(
         window.setTimeout(() => setAresPhase(true), 1600),
       )
@@ -340,7 +340,7 @@ export function ScrollMonolith({
           if (redirected) return
           redirected = true
           window.location.href = redirectUrl
-        }, 5800),
+        }, 3100),
       )
     }
 
