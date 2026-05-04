@@ -340,7 +340,6 @@ function SeriesCard({ s, i }: { s: Series; i: number }) {
           <span className="font-mono text-[10px] tracking-[0.5em] text-white/45 uppercase">
             {s.code}
           </span>
-          {/* BLACKISH CHIP — no colored pulse */}
           <span
             className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/65 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.3em] text-white/75 backdrop-blur-md"
             style={{
@@ -371,7 +370,7 @@ function SeriesCard({ s, i }: { s: Series; i: number }) {
           {s.tagline}
         </p>
 
-        <div className="h-px w-full bg-gradient-to-r from-transparent via-white/15 to-transparent mb-7" />
+        <div className="h-px w-full bg-white/12 mb-7" />
 
         <p className="text-[15px] leading-relaxed text-white/65 mb-8">
           {s.description}

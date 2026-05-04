@@ -460,19 +460,19 @@ export function ScrollMonolith({
         {aresPhase && (
           <motion.div
             key="ares-overlay"
-            className="fixed inset-0 z-[80] pointer-events-none"
+            className="fixed inset-0 z-[300] pointer-events-none"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.5, ease: "easeOut" }}
           >
-            {/* dim + slight blur veil over everything else */}
+            {/* solid black veil — only the ARES letters are visible */}
             <motion.div
               className="absolute inset-0"
-              initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
-              animate={{ opacity: 1, backdropFilter: "blur(8px)" }}
-              transition={{ duration: 0.7, ease: "easeOut" }}
-              style={{ background: "rgba(0,0,0,0.78)" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.55, ease: "easeOut" }}
+              style={{ background: "#000" }}
             />
 
             {/* ARES letters converging to center */}
